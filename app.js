@@ -27949,6 +27949,8 @@
 	var jsondiff = new _jsondiff2.default({ list_diff: false }); /*eslint no-shadow: 0*/
 	
 	
+	var UNKNOWN_CV = '?';
+	
 	var operation = {
 		MODIFY: 'M',
 		REMOVE: '-'
@@ -28072,7 +28074,20 @@
 		}
 	};
 	
+	internal.requestObjectVersion = function (id, version) {
+		var _this = this;
+	
+		return new Promise(function (resolve) {
+			_this.once('version.' + id + '.' + version, function (data) {
+				resolve(data);
+			});
+			_this.send('e:' + id + '.' + version);
+		});
+	};
+	
 	internal.applyChange = function (change, ghost) {
+		var _this2 = this;
+	
 		var acknowledged = internal.findAcknowledgedChange.bind(this)(change),
 		    error,
 		    emit,
@@ -28099,14 +28114,15 @@
 	
 		if (change.o === operation.MODIFY) {
 			if (ghost && ghost.version !== change.sv) {
-				// throw new Error( "Source version and ghost version do not match" );
+				internal.requestObjectVersion.call(this, change.id, change.sv).then(function (data) {
+					internal.applyChange.call(_this2, change, { version: change.sv, data: data });
+				});
 				return;
 			}
 	
 			original = ghost.data;
 			patch = change.v;
 			modified = jsondiff.apply_object_diff(original, patch);
-	
 			return internal.updateObjectVersion.bind(this)(change.id, change.ev, modified, original, patch, acknowledged).then(emit);
 		} else if (change.o === operation.REMOVE) {
 			return internal.removeObject.bind(this)(change.id, acknowledged).then(emit);
@@ -28153,6 +28169,7 @@
 		message.on('i', this.onIndex.bind(this));
 		message.on('c', this.onChanges.bind(this));
 		message.on('e', this.onVersion.bind(this));
+		message.on('cv', this.onChangeVersion.bind(this));
 		message.on('o', function () {});
 	
 		this.networkQueue = new NetworkQueue();
@@ -28248,7 +28265,7 @@
 	};
 	
 	Channel.prototype.onAuth = function (data) {
-		var _this = this;
+		var _this3 = this;
 	
 		var auth;
 		var init;
@@ -28259,16 +28276,14 @@
 		} catch (error) {
 			// request cv and then send method
 			this.once('ready', function () {
-				_this.localQueue.resendSentChanges();
+				_this3.localQueue.resendSentChanges();
 			});
 			init = function init(cv) {
 				if (cv) {
-					_this.localQueue.start();
-					_this.sendChangeVersionRequest(cv);
+					_this3.localQueue.start();
+					_this3.sendChangeVersionRequest(cv);
 				} else {
-					_this.bucket.isIndexing = true;
-					_this.bucket.emit('indexing');
-					_this.sendIndexRequest();
+					_this3.startIndexing();
 				}
 			};
 	
@@ -28276,6 +28291,13 @@
 	
 			return;
 		}
+	};
+	
+	Channel.prototype.startIndexing = function () {
+		this.localQueue.pause();
+		this.bucket.isIndexing = true;
+		this.bucket.emit('indexing');
+		this.sendIndexRequest();
 	};
 	
 	Channel.prototype.onConnect = function () {
@@ -28337,11 +28359,22 @@
 		this.emit('ready');
 	};
 	
+	Channel.prototype.onChangeVersion = function (data) {
+		var _this4 = this;
+	
+		if (data === UNKNOWN_CV) {
+			this.store.setChangeVersion(null).then(function () {
+				return _this4.startIndexing();
+			});
+		}
+	};
+	
 	Channel.prototype.onVersion = function (data) {
 		var ghost = (0, _util2.parseVersionMessage)(data);
 	
 		this.emit('version', ghost.id, ghost.version, ghost.data);
 		this.emit('version.' + ghost.id, ghost.id, ghost.version, ghost.data);
+		this.emit('version.' + ghost.id + '.' + ghost.version, ghost.data);
 	};
 	
 	function NetworkQueue() {
@@ -28413,6 +28446,10 @@
 		for (queueId in this.queues) {
 			this.processQueue(queueId);
 		}
+	};
+	
+	LocalQueue.prototype.pause = function () {
+		this.ready = false;
 	};
 	
 	LocalQueue.prototype.acknowledge = function (change) {
@@ -28891,11 +28928,11 @@
 		ADD: '+'
 	};
 	
-	var _jsondiff = (0, _jsondiff3.default)({ list_diff: false });
+	var _jsondiff = (0, _jsondiff3.default)({ list_diff: false }),
+	    object_diff = _jsondiff.object_diff,
+	    transform_object_diff = _jsondiff.transform_object_diff,
+	    apply_object_diff = _jsondiff.apply_object_diff;
 	
-	var object_diff = _jsondiff.object_diff;
-	var transform_object_diff = _jsondiff.transform_object_diff;
-	var apply_object_diff = _jsondiff.apply_object_diff;
 	exports.type = changeTypes;
 	exports.buildChange = buildChange;
 	exports.compressChanges = compressChanges;
@@ -28995,7 +29032,7 @@
 
 	'use strict';
 	
-	var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol ? "symbol" : typeof obj; };
+	var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; };
 	
 	var diff_match_patch = __webpack_require__(99);
 	
@@ -29564,41 +29601,41 @@
 	            }
 	            */
 	          } else {
-	              var index1 = 0;
-	              var index2;
-	              for (var y = 0; y < patches[x].diffs.length; y++) {
-	                var mod = patches[x].diffs[y];
-	                if (mod[0] !== DIFF_EQUAL) {
-	                  index2 = jsondiff.dmp.diff_xIndex(diffs, index1);
-	                }
-	                if (mod[0] === DIFF_INSERT) {
-	                  // Insertion
-	                  text = text.substring(0, start_loc + index2) + mod[1] + text.substring(start_loc + index2);
-	                  for (var i = 0; i < offsets.length; i++) {
-	                    if (offsets[i] + nullPadding.length > start_loc + index2) {
-	                      offsets[i] += mod[1].length;
-	                    }
-	                  }
-	                } else if (mod[0] === DIFF_DELETE) {
-	                  // Deletion
-	                  var del_start = start_loc + index2;
-	                  var del_end = start_loc + jsondiff.dmp.diff_xIndex(diffs, index1 + mod[1].length);
-	                  text = text.substring(0, del_start) + text.substring(del_end);
-	                  for (var i = 0; i < offsets.length; i++) {
-	                    if (offsets[i] + nullPadding.length > del_start) {
-	                      if (offsets[i] + nullPadding.length < del_end) {
-	                        offsets[i] = del_start - nullPadding.length;
-	                      } else {
-	                        offsets[i] -= del_end - del_start;
-	                      }
-	                    }
+	            var index1 = 0;
+	            var index2;
+	            for (var y = 0; y < patches[x].diffs.length; y++) {
+	              var mod = patches[x].diffs[y];
+	              if (mod[0] !== DIFF_EQUAL) {
+	                index2 = jsondiff.dmp.diff_xIndex(diffs, index1);
+	              }
+	              if (mod[0] === DIFF_INSERT) {
+	                // Insertion
+	                text = text.substring(0, start_loc + index2) + mod[1] + text.substring(start_loc + index2);
+	                for (var i = 0; i < offsets.length; i++) {
+	                  if (offsets[i] + nullPadding.length > start_loc + index2) {
+	                    offsets[i] += mod[1].length;
 	                  }
 	                }
-	                if (mod[0] !== DIFF_DELETE) {
-	                  index1 += mod[1].length;
+	              } else if (mod[0] === DIFF_DELETE) {
+	                // Deletion
+	                var del_start = start_loc + index2;
+	                var del_end = start_loc + jsondiff.dmp.diff_xIndex(diffs, index1 + mod[1].length);
+	                text = text.substring(0, del_start) + text.substring(del_end);
+	                for (var i = 0; i < offsets.length; i++) {
+	                  if (offsets[i] + nullPadding.length > del_start) {
+	                    if (offsets[i] + nullPadding.length < del_end) {
+	                      offsets[i] = del_start - nullPadding.length;
+	                    } else {
+	                      offsets[i] -= del_end - del_start;
+	                    }
+	                  }
 	                }
 	              }
+	              if (mod[0] !== DIFF_DELETE) {
+	                index1 += mod[1].length;
+	              }
 	            }
+	          }
 	        }
 	      }
 	      // Strip the padding off.
@@ -29618,7 +29655,7 @@
 
 	'use strict';
 	
-	var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol ? "symbol" : typeof obj; };
+	var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; };
 	
 	module.exports = diff_match_patch;
 	
@@ -29679,6 +29716,7 @@
 	}
 	
 	//  DIFF FUNCTIONS
+	
 	
 	/**
 	 * The data structure representing a diff is an array of tuples:
@@ -30933,6 +30971,7 @@
 	
 	//  MATCH FUNCTIONS
 	
+	
 	/**
 	 * Locate the best instance of 'pattern' in 'text' near 'loc'.
 	 * @param {string} text The text to search.
@@ -31096,6 +31135,7 @@
 	};
 	
 	//  PATCH FUNCTIONS
+	
 	
 	/**
 	 * Increase the context until it is unique,
@@ -31610,9 +31650,9 @@
 	      } else if (sign === '') {
 	        // Blank line?  Whatever.
 	      } else {
-	          // WTF?
-	          throw new Error('Invalid patch mode "' + sign + '" in: ' + line);
-	        }
+	        // WTF?
+	        throw new Error('Invalid patch mode "' + sign + '" in: ' + line);
+	      }
 	      textPointer++;
 	    }
 	  }
