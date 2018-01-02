@@ -187,7 +187,14 @@ export const NoteEditor = React.createClass({
 
   render: function() {
     let noteContent = '';
-    const { editorMode, note, revisions, fontSize, shouldPrint } = this.props;
+    const {
+      editorMode,
+      note,
+      revisions,
+      fontSize,
+      shouldPrint,
+      monospaceEnabled,
+    } = this.props;
     const revision = this.state.revision || note;
     const isViewingRevisions = this.state.isViewingRevisions;
     const tags = (revision && revision.data && revision.data.tags) || [];
@@ -206,6 +213,7 @@ export const NoteEditor = React.createClass({
       {
         revisions: isViewingRevisions,
         markdown: markdownEnabled,
+        monospace: monospaceEnabled,
       }
     );
 
@@ -314,6 +322,7 @@ const mapStateToProps = ({ appState: state, settings }) => ({
   fontSize: settings.fontSize,
   isEditorActive: !state.showNavigation,
   markdownEnabled: settings.markdownEnabled,
+  monospaceEnabled: settings.monospaceEnabled,
 });
 
 export default connect(mapStateToProps)(NoteEditor);

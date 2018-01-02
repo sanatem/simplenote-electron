@@ -63,6 +63,7 @@ export const SettingsDialog = React.createClass({
       setNoteDisplay,
       setSortType,
       toggleSortOrder,
+      toggleMonospace,
     } = this.props;
 
     const {
@@ -71,6 +72,7 @@ export const SettingsDialog = React.createClass({
         noteDisplay,
         sortType,
         sortReversed: sortIsReversed,
+        monospaceEnabled,
         accountName,
       },
     } = this.props;
@@ -144,6 +146,16 @@ export const SettingsDialog = React.createClass({
               <Item title="Comfy" slug="comfy" />
               <Item title="Condensed" slug="condensed" />
               <Item title="Expanded" slug="expanded" />
+            </SettingsGroup>
+
+            <SettingsGroup
+              title="Editor"
+              slug="monospace"
+              activeSlug={monospaceEnabled ? 'monospace' : ''}
+              onChange={toggleMonospace}
+              renderer={ToggleGroup}
+            >
+              <Item title="Monospace font" slug="monospace" />
             </SettingsGroup>
 
             <SettingsGroup
