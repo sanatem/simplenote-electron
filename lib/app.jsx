@@ -38,6 +38,9 @@ import * as settingsActions from './state/settings/actions';
 import filterNotes from './utils/filter-notes';
 import SearchBar from './search-bar';
 
+import axios from 'axios';
+
+
 // Electron-specific mocks
 let ipc = getIpc();
 let fs = null;
@@ -261,8 +264,12 @@ export const App = connect(mapStateToProps, mapDispatchToProps)(
     onNotePrinted = () =>
       this.props.actions.setShouldPrintNote({ shouldPrint: false });
 
-    onNotesIndex = () =>
-      this.props.actions.loadNotes({ noteBucket: this.props.noteBucket });
+    onNotesIndex = () => {
+      var actions = this.props.actions;
+      axios.get('http://localhost:3000/notes.json').then(function (response) {
+        return actions.loadNotes({ notes: response.data });
+      });
+    }
 
     onNoteRemoved = () => this.onNotesIndex();
 
