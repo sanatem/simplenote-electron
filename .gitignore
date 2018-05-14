@@ -7,3 +7,4 @@ release/
 *.tgz
 .idea
 .DS_Store
+lib/config/environment.js
