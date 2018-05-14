@@ -68,7 +68,11 @@ function mapDispatchToProps(dispatch, { noteBucket }) {
 
   const thenReloadNotes = action => a => {
     dispatch(action(a));
-    dispatch(actionCreators.loadNotes({ noteBucket }));
+      const actions = this.props.actions;
+      // Client Get notes
+      client.getNotes().then(data =>{
+         actions.loadNotes({ notes: data });
+      });
   };
 
   return {
@@ -143,19 +147,19 @@ export const App = connect(mapStateToProps, mapDispatchToProps)(
       ipc.on('appCommand', this.onAppCommand);
       ipc.send('settingsUpdate', this.props.settings);
 
-      this.props.noteBucket
-        .on('index', this.onNotesIndex)
-        .on('update', this.onNoteUpdate)
-        .on('remove', this.onNoteRemoved);
+      // this.props.noteBucket
+      //   .on('index', this.onNotesIndex)
+      //   .on('update', this.onNoteUpdate)
+      //   .on('remove', this.onNoteRemoved);
 
-      this.props.tagBucket
-        .on('index', this.onTagsIndex)
-        .on('update', this.onTagsIndex)
-        .on('remove', this.onTagsIndex);
+      // this.props.tagBucket
+      //   .on('index', this.onTagsIndex)
+      //   .on('update', this.onTagsIndex)
+      //   .on('remove', this.onTagsIndex);
 
-      this.props.client
-        .on('authorized', this.onAuthChanged)
-        .on('unauthorized', this.onAuthChanged);
+      // this.props.client
+      //   .on('authorized', this.onAuthChanged)
+      //   .on('unauthorized', this.onAuthChanged);
 
       this.onNotesIndex();
       this.onTagsIndex();
@@ -267,14 +271,11 @@ export const App = connect(mapStateToProps, mapDispatchToProps)(
     // Get all notes
     onNotesIndex = () => {
       var actions = this.props.actions;
-
+      // Client Get notes
       client.getNotes().then(data =>{
          actions.loadNotes({ notes: data });
       });
 
-      // axios.get('http://localhost:3000/notes.json').then(function (response) {
-      //   return actions.loadNotes({ notes: response.data });
-      // });
     }
 
     onNoteRemoved = () => this.onNotesIndex();
