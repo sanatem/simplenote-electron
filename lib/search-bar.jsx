@@ -14,6 +14,8 @@ import SearchField from './search-field';
 import TagsIcon from './icons/tags';
 import { withoutTags } from './utils/filter-notes';
 
+import client from './utils/client'
+
 const { newNote, search, toggleNavigation } = appState.actionCreators;
 const { recordEvent } = tracks;
 
@@ -50,8 +52,19 @@ const mapStateToProps = ({ appState: state }) => ({
 
 const mapDispatchToProps = (dispatch, { noteBucket }) => ({
   onNewNote: content => {
+
+      //const actions = this.props.actions;
+
+      client.newNote().then(data =>{
+        client.getNotes().then(res =>{
+          const notes = res;
+          // Client New Note
+          dispatch(newNote({ note: data, notes: notes }));
+        });
+      });
+
     dispatch(search({ filter: '' }));
-    dispatch(newNote({ noteBucket, content }));
+    //dispatch(newNote({ noteBucket, content }));
     recordEvent('list_note_created');
   },
   onToggleNavigation: () => dispatch(toggleNavigation()),

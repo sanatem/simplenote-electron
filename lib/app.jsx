@@ -231,6 +231,7 @@ export const App = connect(mapStateToProps, mapDispatchToProps)(
       if (canRun(command)) {
         // newNote expects a bucket to be passed in, but the action method itself wouldn't do that
         if (command.action === 'newNote') {
+          console.log('aprete');
           this.props.actions.newNote({
             noteBucket: this.props.noteBucket,
           });
