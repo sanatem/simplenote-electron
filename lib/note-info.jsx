@@ -203,7 +203,7 @@ const mapDispatchToProps = (dispatch, { noteBucket }) => ({
     dispatch(setMarkdown(markdown));
   },
   onOutsideClick: () => dispatch(toggleNoteInfo()),
-  onPinNote: (note, pin) => dispatch(pinNote({ noteBucket, note, pin })),
+  onPinNote: (note, pin) => dispatch(pinNote({ note, pin })),
 });
 
 export default connect(mapStateToProps, mapDispatchToProps)(

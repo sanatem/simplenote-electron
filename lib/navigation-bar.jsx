@@ -48,7 +48,7 @@ export class NavigationBar extends Component {
   };
 
   render() {
-    const { noteBucket, tagBucket } = this.props;
+    const { noteBucket, tagBucket, sanaterium } = this.props;
     const classes = classNames('button', 'button-borderless', 'theme-color-fg');
     const allNotesClasses = classNames(
       this.getNavigationItemClass(false),
@@ -81,7 +81,7 @@ export class NavigationBar extends Component {
           </button>
         </div>
         <div className="navigation-tags theme-color-border">
-          <TagList noteBucket={noteBucket} tagBucket={tagBucket} />
+          <TagList noteBucket={noteBucket} tagBucket={tagBucket} sanaterium={sanaterium} />
         </div>
         <div className="navigation-tools theme-color-border">
           <button

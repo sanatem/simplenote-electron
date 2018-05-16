@@ -24,6 +24,8 @@ import { tracks } from './analytics';
 import filterNotes from './utils/filter-notes';
 import noteTitle from './utils/note-utils';
 
+import client from './utils/client'
+
 /**
  * Delay for preventing row height calculation thrashing
  *
@@ -495,13 +497,21 @@ const mapStateToProps = ({ appState: state, settings: { noteDisplay } }) => {
   };
 };
 
-const mapDispatchToProps = (dispatch, { noteBucket }) => ({
-  onEmptyTrash: () => dispatch(emptyTrash({ noteBucket })),
+const mapDispatchToProps = (dispatch, { note }) => ({
+  onEmptyTrash: () => {
+    client.emptyTrash().then(data =>{
+      dispatch(emptyTrash( [] ));
+    });
+  },
   onSelectNote: noteId => {
-    dispatch(loadAndSelectNote({ noteBucket, noteId }));
+    // Get the note by id from server
+    client.getNote(noteId).then( data => {
+      dispatch(loadAndSelectNote({ note: data, noteId }));
+    });
+
     recordEvent('list_note_opened');
   },
-  onPinNote: (note, pin) => dispatch(pinNote({ noteBucket, note, pin })),
+  onPinNote: (note, pin) => dispatch(pinNote({ note, pin })),
 });
 
 export default connect(mapStateToProps, mapDispatchToProps)(NoteList);

@@ -50,10 +50,11 @@ const mapStateToProps = ({ appState: state }) => ({
   showTrash: state.showTrash,
 });
 
-const mapDispatchToProps = (dispatch, { noteBucket }) => ({
+const mapDispatchToProps = (dispatch, { noteBucket, sanaterium }) => ({
   onNewNote: content => {
 
       //const actions = this.props.actions;
+      client.init(sanaterium.auth.retrieveData('authHeaders'));
 
       client.newNote().then(data =>{
         client.getNotes().then(res =>{

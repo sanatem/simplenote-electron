@@ -41,9 +41,12 @@ import SearchBar from './search-bar';
 
 import client from './utils/client'
 
+
 // Electron-specific mocks
 let ipc = getIpc();
 let fs = null;
+
+var tries = 0;
 
 function getIpc() {
   try {
@@ -68,11 +71,10 @@ function mapDispatchToProps(dispatch, { noteBucket }) {
 
   const thenReloadNotes = action => a => {
     dispatch(action(a));
-      const actions = this.props.actions;
-      // Client Get notes
-      client.getNotes().then(data =>{
-         actions.loadNotes({ notes: data });
-      });
+    // Client Get sorted notes
+    client.getSortedNotes(a).then(data =>{
+      dispatch(actionCreators.loadNotes({ notes: data }));
+    });
   };
 
   return {
@@ -136,6 +138,8 @@ export const App = connect(mapStateToProps, mapDispatchToProps)(
     };
 
     componentWillMount() {
+      client.init(this.props.client.auth.retrieveData('authHeaders'));
+
       if (isElectron()) {
         this.initializeElectron();
       }
@@ -147,22 +151,8 @@ export const App = connect(mapStateToProps, mapDispatchToProps)(
       ipc.on('appCommand', this.onAppCommand);
       ipc.send('settingsUpdate', this.props.settings);
 
-      // this.props.noteBucket
-      //   .on('index', this.onNotesIndex)
-      //   .on('update', this.onNoteUpdate)
-      //   .on('remove', this.onNoteRemoved);
-
-      // this.props.tagBucket
-      //   .on('index', this.onTagsIndex)
-      //   .on('update', this.onTagsIndex)
-      //   .on('remove', this.onTagsIndex);
-
-      // this.props.client
-      //   .on('authorized', this.onAuthChanged)
-      //   .on('unauthorized', this.onAuthChanged);
-
-      this.onNotesIndex();
-      this.onTagsIndex();
+      // Checks if it is logged in and then reload the notes.
+      this.checkAuthorized();
 
       this.toggleShortcuts(true);
 
@@ -179,6 +169,12 @@ export const App = connect(mapStateToProps, mapDispatchToProps)(
       if (this.props.settings !== prevProps.settings) {
         ipc.send('settingsUpdate', this.props.settings);
       }
+
+      // if (tries < 50) {
+      //   client.init(this.props.client.auth.retrieveData('authHeaders'));
+      //   this.onNotesIndex();
+      //   tries++;
+      // }
     }
 
     handleShortcut = event => {
@@ -231,10 +227,16 @@ export const App = connect(mapStateToProps, mapDispatchToProps)(
       if (canRun(command)) {
         // newNote expects a bucket to be passed in, but the action method itself wouldn't do that
         if (command.action === 'newNote') {
-          console.log('aprete');
-          this.props.actions.newNote({
-            noteBucket: this.props.noteBucket,
+          const actions = this.props.actions;
+
+          client.newNote().then(data =>{
+            client.getNotes().then(res =>{
+              const notes = res;
+              // Client New Note
+              actions.newNote({ note: data, notes: notes });
+            });
           });
+
           analytics.tracks.recordEvent('list_note_created');
         } else if (has(this.props, command.action)) {
           const { action, ...args } = command;
@@ -246,6 +248,19 @@ export const App = connect(mapStateToProps, mapDispatchToProps)(
       }
     };
 
+    checkAuthorized = () => {
+      if (this.props.isAuthorized === true){
+        client.init(this.props.client.auth.retrieveData('authHeaders'));
+        this.onNotesIndex();
+        this.onTagsIndex();
+        return;
+      }
+      else{
+        setTimeout(this.checkAuthorized, 350);
+      }
+    }
+
+    // Checks if the user is logged in.
     onAuthChanged = () => {
       const {
         actions,
@@ -257,13 +272,12 @@ export const App = connect(mapStateToProps, mapDispatchToProps)(
 
       actions.authChanged();
 
-      if (!client.isAuthorized()) {
-        actions.closeNote();
-        return resetAuth();
-      }
-
-      setAuthorized();
-      analytics.initialize(accountName);
+      this.props.client.auth.validateToken()
+      .then(data => { setAuthorized(); })
+      .fail(data => {
+          actions.closeNote();
+          return resetAuth;
+        });
     };
 
     onNotePrinted = () =>
@@ -271,28 +285,35 @@ export const App = connect(mapStateToProps, mapDispatchToProps)(
 
     // Get all notes
     onNotesIndex = () => {
-      var actions = this.props.actions;
-      // Client Get notes
-      client.getNotes().then(data =>{
-         actions.loadNotes({ notes: data });
-      });
-
+      if (this.props.isAuthorized === true) {
+        var actions = this.props.actions;
+        // Client Get notes
+        client.getNotes().then(data =>{
+           actions.loadNotes({ notes: data });
+        });
+      }
     }
 
     onNoteRemoved = () => this.onNotesIndex();
 
-    onNoteUpdate = (noteId, data, original, patch, isIndexing) =>
-      this.props.actions.noteUpdated({
-        noteBucket: this.props.noteBucket,
-        noteId,
-        data,
-        original,
-        patch,
-        isIndexing,
+    onNoteUpdate = (note) =>{
+      var actions = this.props.actions;
+      // Client Get notes
+      client.getNotes().then(res =>{
+         var notes = res;
+          actions.noteUpdated({
+            noteId: note.id,
+            note,
+            notes
+          });
       });
 
-    onTagsIndex = () =>
-      this.props.actions.loadTags({ tagBucket: this.props.tagBucket });
+    }
+
+    onTagsIndex = () => {
+      const actions = this.props.actions;
+      client.getTags().then(data => { actions.loadTags({ tags: data }) });
+    }
 
     initializeElectron = () => {
       const remote = __non_webpack_require__('electron').remote; // eslint-disable-line no-undef
@@ -307,28 +328,47 @@ export const App = connect(mapStateToProps, mapDispatchToProps)(
 
     onSetEditorMode = mode => this.props.actions.setEditorMode({ mode });
 
-    onUpdateContent = (note, content) =>
-      this.props.actions.updateNoteContent({
-        noteBucket: this.props.noteBucket,
-        note,
-        content,
+    onUpdateContent = (note, content) => {
+      const actions = this.props.actions;
+      // Update note in server
+      client.updateNote(note.id, content).then( data => {
+        actions.updateNoteContent({
+          data,
+          content,
+        });
+        // This updates the note title in real time.
+        this.onNoteUpdate(data);
       });
+    }
 
-    onUpdateNoteTags = (note, tags) =>
-      this.props.actions.updateNoteTags({
-        noteBucket: this.props.noteBucket,
-        tagBucket: this.props.tagBucket,
-        note,
-        tags,
+    onUpdateNoteTags = (note, tags) => {
+      const actions = this.props.actions;
+      // Update the tags in the server.
+      client.updateNoteTags(note.id, tags).then( data => {
+        actions.updateNoteTags({ note, tags });
+        this.onTagsIndex();
       });
+    }
 
     onTrashNote = note => {
       const previousIndex = this.getPreviousNoteIndex(note);
-      this.props.actions.trashNote({
-        noteBucket: this.props.noteBucket,
-        note,
-        previousIndex,
+      const actions = this.props.actions;
+      // Delete note on server
+
+      client.trashNote(note.id).then( data => {
+        client.getNotes().then(data => {
+          var notes = data;
+
+          actions.trashNote({
+            note,
+            notes,
+            previousIndex,
+          });
+
+        });
+
       });
+
       analytics.tracks.recordEvent('editor_note_deleted');
     };
 
@@ -345,12 +385,32 @@ export const App = connect(mapStateToProps, mapDispatchToProps)(
 
     onRestoreNote = note => {
       const previousIndex = this.getPreviousNoteIndex(note);
-      this.props.actions.restoreNote({
-        noteBucket: this.props.noteBucket,
-        note,
-        previousIndex,
+      const actions = this.props.actions;
+      client.restoreNote(note.id).then(data => {
+        client.getNotes().then( notes => {
+          actions.restoreNote({
+            note,
+            notes,
+            previousIndex
+          });
+        });
       });
       analytics.tracks.recordEvent('editor_note_restored');
+    };
+
+    onDeleteNoteForever = note => {
+      const previousIndex = this.getPreviousNoteIndex(note);
+      const actions = this.props.actions;
+      client.deleteNote(note.id).then(data => {
+        client.getNotes().then( notes => {
+          actions.deleteNoteForever({
+            note,
+            notes,
+            previousIndex,
+          });
+        });
+      });
+
     };
 
     onShareNote = note =>
@@ -362,20 +422,10 @@ export const App = connect(mapStateToProps, mapDispatchToProps)(
         params: { note },
       });
 
-    onDeleteNoteForever = note => {
-      const previousIndex = this.getPreviousNoteIndex(note);
-      this.props.actions.deleteNoteForever({
-        noteBucket: this.props.noteBucket,
-        note,
-        previousIndex,
-      });
-    };
-
     onRevisions = note => {
-      this.props.actions.noteRevisions({
-        noteBucket: this.props.noteBucket,
-        note,
-      });
+      var actions = this.props.actions
+
+      actions.noteRevisions({ note: note });
       analytics.tracks.recordEvent('editor_versions_accessed');
     };
 
@@ -434,10 +484,10 @@ export const App = connect(mapStateToProps, mapDispatchToProps)(
           {isAuthorized ? (
             <div className={mainClasses}>
               {state.showNavigation && (
-                <NavigationBar noteBucket={noteBucket} tagBucket={tagBucket} />
+                <NavigationBar noteBucket={noteBucket} tagBucket={tagBucket} sanaterium={this.props.client} />
               )}
               <div className="source-list theme-color-bg theme-color-fg">
-                <SearchBar noteBucket={noteBucket} />
+                <SearchBar noteBucket={noteBucket} sanaterium={this.props.client} />
                 {hasNotes ? (
                   <NoteList noteBucket={noteBucket} />
                 ) : (

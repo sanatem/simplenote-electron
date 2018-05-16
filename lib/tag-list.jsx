@@ -7,6 +7,8 @@ import { get } from 'lodash';
 import appState from './flux/app-state';
 import { tracks } from './analytics';
 
+import client from './utils/client'
+
 const {
   editTags,
   renameTag,
@@ -27,7 +29,7 @@ export class TagList extends Component {
   };
 
   renderItem = tag => {
-    const { onRenameTag, selectedTag } = this.props;
+    const { onRenameTag, selectedTag, sanaterium } = this.props;
     const isSelected = tag.data.name === get(selectedTag, 'data.name', '');
     const classes = classNames('tag-list-input', 'theme-color-fg', {
       active: isSelected,
@@ -95,7 +97,7 @@ const mapStateToProps = ({ appState: state }) => ({
   tags: state.tags,
 });
 
-const mapDispatchToProps = (dispatch, { noteBucket, tagBucket }) => ({
+const mapDispatchToProps = (dispatch, { noteBucket, tagBucket, sanaterium }) => ({
   onEditTags: () => dispatch(editTags()),
   onRenameTag: (tag, name) =>
     dispatch(
@@ -117,14 +119,15 @@ const mapDispatchToProps = (dispatch, { noteBucket, tagBucket }) => ({
     dispatch(selectTag({ tag }));
     recordEvent('list_tag_viewed');
   },
+  // Deletes the tag.
   onTrashTag: tag => {
-    dispatch(
-      trashTag({
-        noteBucket,
-        tag,
-        tagBucket,
-      })
-    );
+    client.init(sanaterium.auth.retrieveData('authHeaders'));
+    client.trashTag(tag.tag_id).then(data => {
+      client.getTags().then( tags => {
+        dispatch(trashTag({tag, tags}));
+      });
+    });
+
     recordEvent('list_trash_viewed');
   },
 });
